@@ -12,8 +12,8 @@
 u_char *
 ngx_proxy_protocol_read(ngx_connection_t *c, u_char *buf, u_char *last)
 {
-    size_t  len;
-    u_char  ch, *p, *addr;
+    size_t  len, plen;
+    u_char  ch, *p, *addr, *paddr;
 
     p = buf;
     len = last - buf;
@@ -73,6 +73,58 @@ ngx_proxy_protocol_read(ngx_connection_t *c, u_char *buf, u_char *last)
 
     ngx_log_debug1(NGX_LOG_DEBUG_CORE, c->log, 0,
                    "PROXY protocol address: \"%V\"", &c->proxy_protocol_addr);
+
+    for ( ;; ) {
+        if (p == last) {
+            goto invalid;
+        }
+        
+        ch = *p++;
+        
+        if (ch == ' ') {
+            break;
+        }
+
+        if (ch != ':' && ch != '.'
+            && (ch < 'a' || ch > 'f')
+            && (ch < 'A' || ch > 'F')
+            && (ch < '0' || ch > '9'))
+        {
+            goto invalid;
+        }
+    }
+
+    paddr = p;
+
+    for ( ;; ) {
+        if (p == last) {
+            goto invalid;
+        }
+
+        ch = *p++;
+
+        if (ch == ' ') {
+            break;
+        }
+
+        if (ch < '0' || ch > '9')
+        {
+            goto invalid;
+        }
+    }
+
+    plen = p - paddr - 1;
+    c->proxy_protocol_port.data = ngx_pnalloc(c->pool, plen);
+
+    if (c->proxy_protocol_port.data == NULL) {
+        return NULL;
+    }
+
+    ngx_memcpy(c->proxy_protocol_port.data, paddr, plen);
+    c->proxy_protocol_port.len = plen;
+
+    ngx_log_debug1(NGX_LOG_DEBUG_CORE, c->log, 0,
+                   "PROXY protocol port: \"%V\"", &c->proxy_protocol_port);
 
 skip:
 
